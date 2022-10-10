@@ -1,11 +1,10 @@
-module chatapp-go
+module service
 
 go 1.19
 
 require (
-	github.com/google/uuid v1.1.2
 	google.golang.org/grpc v1.50.0
-	google.golang.org/protobuf v1.27.1
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
