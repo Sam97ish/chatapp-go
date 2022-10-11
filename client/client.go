@@ -71,7 +71,7 @@ func main() {
 	client := service.NewBroadcastClient(conn)
 	user := &service.User{
 		Id:   id,
-		Name: s[0],
+		Name: def,
 	}
 	if user.Name == "" {
 		user.Name = def
