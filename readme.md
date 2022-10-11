@@ -14,6 +14,7 @@ You can either run `go run . [host:port]` in server folder or use docker with:
 - docker run -it -p 8080:8080 --rm --name  chatapp-server-go chatapp-server
 you can also use the bash script to autorun the server.
 
+both client and server support a tls mode with the optional -s flag
 
 # Compilation
 Use `go build` on either client or server to build them.
