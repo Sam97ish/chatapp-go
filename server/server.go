@@ -13,10 +13,12 @@ import (
 
 var logger glog.LoggerV2
 
+// Logger set up
 func init() {
 	logger = glog.NewLoggerV2(os.Stdout, os.Stdout, os.Stdout)
 }
 
+// Connection Represents a connection on the server
 type Connection struct {
 	stream service.Broadcast_CreateStreamServer
 	id     string
@@ -24,11 +26,13 @@ type Connection struct {
 	error  chan error
 }
 
+// Server Represents all the connections on the server
 type Server struct {
 	Connections []*Connection
 	service.UnimplementedBroadcastServer
 }
 
+// CreateStream Creates a stream used to exchange data
 func (s *Server) CreateStream(pconn *service.Connect, stream service.Broadcast_CreateStreamServer) error {
 	newconn := &Connection{
 		stream: stream,
@@ -42,6 +46,7 @@ func (s *Server) CreateStream(pconn *service.Connect, stream service.Broadcast_C
 	return <-newconn.error
 }
 
+// BroadcastMessage Sends message to all connected users
 func (s *Server) BroadcastMessage(ctx context.Context, msg *service.Message) (*service.Close, error) {
 	wait := sync.WaitGroup{}
 	done := make(chan int)
