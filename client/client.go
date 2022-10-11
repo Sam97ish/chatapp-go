@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/Sam97ish/chatapp-go/proto/service"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +22,8 @@ func init() {
 	wait = &sync.WaitGroup{}
 }
 
+// Attempts to connect the user to the server.
+// Returns a stream used to exchange messages.
 func connect(user *service.User, client service.BroadcastClient) (service.Broadcast_CreateStreamClient, error) {
 	var streamerror error
 	conn := &service.Connect{
@@ -41,18 +45,29 @@ func main() {
 		log.Fatal("Please run as [ go run . host:port ].")
 	}
 	address := arguments[1]
-	def := "Anon" // default
+
+	// Get username
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("Connecting to %s ...\n", address)
+	fmt.Println("input username")
+	fmt.Println("default is Anon (Press Enter)")
+	fmt.Println("---------------------")
+	username, _ := reader.ReadString('\n')
+	if username == "" || username == "\n" {
+		username = "Anon"
+	}
+	username = strings.Replace(username, "\n", "", -1)
 
 	// UI set up
 	loginView := NewLoginView()
 	chatView := NewChatView()
 
-	ui, errLogin := tui.New(loginView)
+	ui, errLogin := tui.New(loginView.root)
 	if errLogin != nil {
 		log.Fatal(errLogin)
 	}
 	// Set up login
-	loginView.name.OnSubmit(func(username *tui.Entry) {
+	loginView.input.OnSubmit(func(username *tui.Entry) {
 		ui.SetWidget(chatView.chat)
 	})
 
@@ -71,10 +86,7 @@ func main() {
 	client := service.NewBroadcastClient(conn)
 	user := &service.User{
 		Id:   id,
-		Name: def,
-	}
-	if user.Name == "" {
-		user.Name = def
+		Name: username,
 	}
 
 	// Connect user to server
