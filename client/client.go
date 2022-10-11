@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bufio"
-	"chatapp-go/proto/service"
 	"context"
 	"fmt"
+	"github.com/Sam97ish/chatapp-go/proto/service"
 	"github.com/google/uuid"
+	"github.com/marcusolsson/tui-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"log"
@@ -20,7 +20,7 @@ func init() {
 	wait = &sync.WaitGroup{}
 }
 
-func connect(user *service.User, client service.BroadcastClient) error {
+func connect(user *service.User, client service.BroadcastClient) (service.Broadcast_CreateStreamClient, error) {
 	var streamerror error
 	conn := &service.Connect{
 		User:   user,
@@ -28,78 +28,110 @@ func connect(user *service.User, client service.BroadcastClient) error {
 	}
 	stream, err := client.CreateStream(context.Background(), conn)
 	if err != nil {
-		return fmt.Errorf("connection failed: %v", err)
+		log.Fatalf("connection failed: %v", err)
 	}
+
+	return stream, streamerror
+}
+
+func main() {
+	// Args collection
+	arguments := os.Args
+	if len(arguments) == 1 {
+		log.Fatal("Please run as [ go run . host:port ].")
+	}
+	address := arguments[1]
+	def := "Anon" // default
+
+	// UI set up
+	loginView := NewLoginView()
+	chatView := NewChatView()
+
+	ui, errLogin := tui.New(loginView)
+	if errLogin != nil {
+		log.Fatal(errLogin)
+	}
+	// Set up login
+	loginView.name.OnSubmit(func(username *tui.Entry) {
+		ui.SetWidget(chatView.chat)
+	})
+
+	quit := func() { ui.Quit() }
+	ui.SetKeybinding("Esc", quit)
+	ui.SetKeybinding("Ctrl+c", quit)
+
+	// Set up
+	done := make(chan int)
+	id := uuid.New().String()
+	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("could not connect to service: %v", err)
+	}
+
+	client := service.NewBroadcastClient(conn)
+	user := &service.User{
+		Id:   id,
+		Name: s[0],
+	}
+	if user.Name == "" {
+		user.Name = def
+	}
+
+	// Connect user to server
+	stream, errorStream := connect(user, client)
+	if errorStream != nil {
+		log.Fatalf("could not connect user: %v", errorStream)
+	}
+
+	// Incoming: receive msgs from server
 	wait.Add(1)
 	go func(str service.Broadcast_CreateStreamClient) {
 		defer wait.Done()
 		for {
 			msg, errRec := str.Recv()
 			if errRec != nil {
-				streamerror = fmt.Errorf("error reading message: %v", errRec)
+				_ = fmt.Errorf("error reading message: %v", errRec)
 				break
 			}
-			msgTime, errTime := time.Parse(time.RFC1123Z, msg.Timestamp)
-			if errTime != nil {
-				fmt.Printf("error parsing time: %v", errTime)
-			}
-			fmt.Printf("<%s> %v: %s\n", msgTime.Format(time.Stamp), msg.User.Name, msg.Content)
+
+			ui.Update(func() { chatView.AddMessage(msg) })
 		}
 	}(stream)
 
-	return streamerror
-}
-func main() {
-	arguments := os.Args
-	if len(arguments) == 2 {
-		log.Fatal("Please run as [ go run client.go host:port name ].")
-	}
-	address := arguments[1]
-	name := arguments[2]
+	// Run chat UI
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		if errUI := ui.Run(); errUI != nil {
+			log.Fatal(errUI)
+		}
+	}()
 
-	timestamp := time.Now()
-	done := make(chan int)
-
-	id := uuid.New().String()
-
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("could not connect to service: %v", err)
-	}
-	//fmt.Printf("conn %v", conn)
-	client := service.NewBroadcastClient(conn)
-
-	user := &service.User{
-		Id:   id,
-		Name: name,
-	}
-
-	errUser := connect(user, client)
-	if errUser != nil {
-		log.Fatalf("could not connect user: %v", errUser)
-	}
-
+	// Outgoing: send msgs to server
 	wait.Add(1)
 	go func() {
 		defer wait.Done()
 
-		scanner := bufio.NewScanner(os.Stdin)
-
-		for scanner.Scan() {
-			msg := &service.Message{
-				User:      user,
-				Content:   scanner.Text(),
-				Timestamp: timestamp.Format(time.RFC1123Z),
-			}
-			_, errBroad := client.BroadcastMessage(context.Background(), msg)
-			if errBroad != nil {
-				fmt.Printf("Error sending message: %v", errBroad)
-				break
-			}
+		for {
+			chatView.input.OnSubmit(func(entry *tui.Entry) {
+				timestamp := time.Now()
+				msg := &service.Message{
+					User:      user,
+					Content:   entry.Text(),
+					Timestamp: timestamp.Format(time.RFC1123Z),
+				}
+				chatView.input.SetText("")
+				_, errBroad := client.BroadcastMessage(context.Background(), msg)
+				if errBroad != nil {
+					log.Fatalf("Error sending message: %v", errBroad)
+					return
+				}
+			})
 		}
 
 	}()
 
+	// Wait until all goroutines finish
 	go func() {
 		wait.Wait()
 		close(done)

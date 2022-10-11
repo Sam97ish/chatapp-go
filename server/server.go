@@ -1,8 +1,8 @@
 package main
 
 import (
-	"chatapp-go/proto/service"
 	"context"
+	"github.com/Sam97ish/chatapp-go/proto/service"
 	"google.golang.org/grpc"
 	"net"
 	"os"
