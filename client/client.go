@@ -8,9 +8,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/marcusolsson/tui-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -42,15 +44,20 @@ func main() {
 	// Args collection
 	arguments := os.Args
 	if len(arguments) == 1 {
-		log.Fatal("Please run as [ go run . host:port ].")
+		log.Fatal("Please run as  go run . host:port  [-s] .")
 	}
 	address := arguments[1]
+	secure := false
+	if len(arguments) == 3 {
+		secure = !secure
+	}
 
 	// Get username
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Connecting to %s ...\n", address)
 	fmt.Println("input username")
 	fmt.Println("default is Anon (Press Enter)")
+	fmt.Printf("connecting in secure mode: %v \n", secure)
 	fmt.Println("---------------------")
 	username, _ := reader.ReadString('\n')
 	if username == "" || username == "\n" {
@@ -78,7 +85,22 @@ func main() {
 	// Set up
 	done := make(chan int)
 	id := uuid.New().String()
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// Set up connection options
+	var connOptions grpc.DialOption
+	if secure {
+
+		cert, err := credentials.NewClientTLSFromFile(filepath.Join("cert", "ca-cert.pem"), "")
+		if err != nil {
+			log.Fatal("Error parsing the cert file for TLS support.")
+		}
+		connOptions = grpc.WithTransportCredentials(cert)
+	} else {
+		connOptions = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	// Attempt connection
+	conn, err := grpc.Dial(address, connOptions)
 	if err != nil {
 		log.Fatalf("could not connect to service: %v", err)
 	}

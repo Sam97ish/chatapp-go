@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"github.com/Sam97ish/chatapp-go/proto/service"
 	"google.golang.org/grpc"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 
 	glog "google.golang.org/grpc/grpclog"
@@ -84,19 +86,37 @@ func main() {
 
 	arguments := os.Args
 	if len(arguments) == 1 {
-		logger.Fatal("Please provide host:port.")
+		logger.Fatal("Please provide host:port [-s] .")
 	}
 	address := arguments[1]
+	secure := false
+	if len(arguments) == 3 {
+		secure = !secure
+	}
 
 	var connections []*Connection
 
 	server := &Server{connections, service.UnimplementedBroadcastServer{}}
 
 	grpcServer := grpc.NewServer()
+	var listener net.Listener
+	var err error
+	if secure {
+		cert, errCert := tls.LoadX509KeyPair(filepath.Join("cert", "server-cert.pem"), filepath.Join("cert", "server-key.pem"))
+		if errCert != nil {
+			logger.Fatalf("Error loading the server cert %s", err)
+		}
 
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		logger.Fatalf("Error creating the server %s", err)
+		config := &tls.Config{Certificates: []tls.Certificate{cert}, ServerName: "test"}
+		listener, err = tls.Listen("tcp", address, config)
+		if err != nil {
+			logger.Fatalf("Error creating the server %s", err)
+		}
+	} else {
+		listener, err = net.Listen("tcp", address)
+		if err != nil {
+			logger.Fatalf("Error creating the server %s", err)
+		}
 	}
 
 	logger.Infof("Starting server at address %s", address)
